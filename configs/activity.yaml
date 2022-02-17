@@ -1,0 +1,10 @@
+activity_type: activity
+class_names:
+  - awards ceremony
+  - babysitting
+  - beauty salon service
+  - bike lesson
+  - car racing pitstop service
+  - dining service
+  - firefighting
+  - hospital service (rehabilitation)
