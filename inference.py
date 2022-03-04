@@ -1,4 +1,4 @@
-from momaapi import MOMAAPI
+from momaapi import MOMA
 import torch
 import sys
 from mmpt.models import MMPTModel, MMPTClassifier
@@ -9,61 +9,90 @@ import skvideo.io
 import numpy as np
 import yaml
 
-def predict(moma, moma_acts, act_type):
+import pytorch_lightning
+from preprocessing import val_dataloader
+
+def predict(moma, moma_acts, act_type, act_names):
+    
+    is_renamed = True
+    
+    if type(moma_acts) == str: 
+        if moma_acts == "all":
+            if act_type == 'sub-activity':
+                print("MOMA TAXONOMY:", moma_acts)
+                moma_acts = moma.taxonomy['sact']
+            elif act_type == 'activity':
+                moma_acts = moma.taxonomy['act']
+                print("MOMA TAXONOMY:", moma_acts)
+
+            else:
+                print("ERROR: Not supported activity type")
+        else:
+            print("Only support string type == 'all'")
+    
+    if act_names == None:
+        is_renamed = False
+        act_names = moma_acts
+            
+    # Init dataset
+    dataloader = val_dataloader(act_type)
+    
     
     # Init model
-    model, tokenizer, aligner = MMPTModel.from_pretrained("projects/retri/videoclip/how2.yaml")
-    model.eval().to('cuda')
-    classifier = MMPTClassifier(model, tokenizer, aligner)
-    classifier.set_class_names(moma_acts)    
+    classifier = MMPTClassifier.from_pretrained("projects/retri/videoclip/how2.yaml")
+    classifier.set_class_names(act_names)    
     
-    for correct_idx, activity in enumerate(moma_acts):
-        print("Category:", activity)
-        act_ids = moma.get_ids_act(cnames_act = [activity])
-        print("Number in category", len(act_ids))
-        num_examples = 10
-        num_correct = 0
-        paths = moma.get_paths(ids_act=act_ids[:num_examples])
-        print("PATH LENGTH:", len(paths))
-        model.eval().to('cuda')
+    nb_classes = len(moma_acts)
+    confusion_matrix = torch.zeros(nb_classes, nb_classes)
+    top5_preds = torch.zeros(nb_classes) # Num times the class was chosen in the top 5 (when it was the correct)
+    num_occurences = torch.zeros(nb_classes) # Num times the class was the correct answer
+    y_preds = []
+    y_labels = []
+    with torch.no_grad():
+        for i, data in enumerate(dataloader):
+            inputs = data['video'].cuda()
+            inputs = inputs.permute(0, 2, 3, 4, 1)
+            inputs = inputs.view(1, 3, 30, 224, 224, 3)
+            classes = data['label']
+            class_label = classes.item()
+            num_occurences[classes.item()] += 1
 
-        for path in paths:
-            videodata = skvideo.io.vread(path)
-            L, H, W, C = videodata.shape
-            if L / 30 != 0:
-                extra_frames = L % 30
-                videodata = videodata[extra_frames:]
-            L = len(videodata)
-            if L > 240:
-                # Grab middle 240 frames
-                videodata = videodata[L//2-120:L//2+120] # Cap videodata to first 240 frames
-            videodata = np.reshape(videodata, (1, -1, 30, H, W, C))
-            # B, T, FPS, H, W, C (VideoCLIP is trained on 30 fps of s3d)
-            text_to_try = moma_acts
+            outputs = classifier(inputs)
+            
+            y_labels.append(class_label)            
+            _, preds = torch.max(outputs, 1)
+            y_preds.append(preds[0].item())
+            for t, p in zip(classes.view(-1), preds.view(-1)):
+                    confusion_matrix[t.long(), p.long()] += 1
+            
+            topk = torch.topk(outputs, k=5)[1] # Get the indices
+            if class_label in topk:
+                top5_preds[class_label] += 1
+            
+            if i % 20 == 0:
+                #torch.save(confusion_matrix, 'confusion_matrix_' + act_type + '.pt')
+                pred, actual = preds.item(), classes.item()
+                print("step", i)
+                print("pred:", moma_acts[pred], "actual:", moma_acts[actual], pred, actual)
 
-            video_frames = torch.from_numpy(videodata / 255.0).cuda().float() 
-            scores = []
-            for text in text_to_try:                          
-                caps, cmasks = aligner._build_text_seq(
-                    tokenizer(text, add_special_tokens=False)["input_ids"]
-                )
+    print(confusion_matrix)
+    print(confusion_matrix.diag()/confusion_matrix.sum(1))
+    print(top5_preds / num_occurences)
+    if not is_renamed:
+        torch.save(top5_preds, 'top5_preds_' + act_type + '.pt')
+        torch.save(num_occurences, 'num_occurences_' + act_type + '.pt')
+        torch.save(confusion_matrix, 'confusion_matrix_' + act_type + '.pt')
+        np.save('y_preds_' + act_type + '.npy', y_preds)
+        np.save('y_labels_' + act_type + '.npy', y_labels)
+    else:
+        torch.save(top5_preds, 'top5_preds_renamed_' + act_type + '.pt')
+        torch.save(num_occurences, 'num_occurences_renamed_' + act_type + '.pt')
+        torch.save(confusion_matrix, 'confusion_matrix_renamed_' + act_type + '.pt')
+        np.save('y_preds_renamed_' + act_type + '.npy', y_preds)
+        np.save('y_labels_renamed_' + act_type + '.npy', y_labels)
 
-                caps, cmasks = caps[None, :].cuda(), cmasks[None, :].cuda()  # bsz=1
-                with torch.no_grad():
-                    # Goes here first
-                    output = model(video_frames, caps, cmasks, return_score=True)
-                #print("Text:", "'" + text + "'", "score:", output["score"].item())  # dot-product
-                scores.append(output["score"].item())
-
-            pred = np.argmax(scores)
-            with torch.no_grad():
-                pred_m = np.argmax(classifier(video_frames))
-            if pred == correct_idx:
-                num_correct += 1
-            print("Predicted class", moma_acts[pred])
-            print("factorized model predicted class:", moma_acts[pred])
-
-        print("Accuracy for class", activity, num_correct / num_examples)
+    
+    
         
 def main():
     
@@ -78,17 +107,17 @@ def main():
         data = yaml.full_load(file)
         print(data)
     
-    try:
-        act_type = data['activity_type']
-        moma_acts = data['class_names']
-    except:
-        print("YAML config file requires field [activity_type (str)] and [class_names (list:str)]")
+    act_type = data['activity_type']
+
+    moma_acts = data['class_names'] 
+    act_names = None
+    if 'renamed_classes' in data:
+        act_names = data['renamed_classes']
     
     dir_moma = '../../data/moma'
-    #moma = None
-    moma = MOMAAPI(dir_moma)
+    moma = MOMA(dir_moma)
     
-    predict(moma, moma_acts, act_type)
+    predict(moma, moma_acts, act_type, act_names)
     
     
     

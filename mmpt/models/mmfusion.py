@@ -70,11 +70,10 @@ class MMPTModel(nn.Module):
         vfeats = vfeats['video_embedding']
         vfeats = vfeats.view(bsz, seq_len, vfeats.size(-1)).cuda()
         
-        # Determine if this vfeats is the same as the video embedding
         padding = torch.zeros(
             bsz, self.max_video_len - seq_len, vfeats.size(-1)).cuda()
+        
         vfeats = torch.cat([vfeats, padding], dim=1)
-        # Determine if this vfeats is the same as the video embedding
         vmasks = torch.cat([
             torch.ones((bsz, seq_len), dtype=torch.bool),
             torch.zeros((bsz, self.max_video_len - seq_len), dtype=torch.bool)
@@ -90,7 +89,33 @@ class MMPTModel(nn.Module):
         return output
 
 class MMPTClassifier(nn.Module):
-    """An e2e wrapper of MMPT video classification model.  Requires to set class names before use. Takes only video as input. Uses output of MMPTModel.from_pretrained for constructor."""
+    """An e2e wrapper of MMPT video classification model.  Requires to set class names before use. Takes only video as input. Use from_pretrained to create a classifier that was trained as a MMPTModel."""
+    @classmethod
+    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt"):
+        import os
+        from ..utils import recursive_config
+        from ..tasks import Task
+        config = recursive_config(config)
+        mmtask = Task.config_task(config)
+        checkpoint_path = os.path.join(config.eval.save_path, checkpoint)
+        mmtask.build_model(checkpoint=checkpoint_path)
+        # TODO(huxu): make the video encoder configurable.
+        from ..processors.models.s3dg import S3D
+        video_encoder = S3D('pretrained_models/s3d_dict.npy', 512)
+        video_encoder.load_state_dict(
+            torch.load('pretrained_models/s3d_howto100m.pth'))
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(
+            config.dataset.bert_name, use_fast=config.dataset.use_fast
+        )
+        from ..processors import Aligner
+        aligner = Aligner(config.dataset)
+        return MMPTClassifier(
+            MMPTModel(config, mmtask.model, video_encoder).eval().to('cuda'), 
+            tokenizer, 
+            aligner
+        )
+    
     def __init__(self, mmpt_model, tokenizer, aligner):
         super().__init__()
         self.mmpt_model = mmpt_model
@@ -98,7 +123,7 @@ class MMPTClassifier(nn.Module):
         self.aligner = aligner
         self.class_names = None
         
-    def set_class_names(self, class_names):
+    def set_class_names(self, class_names, get_scores=False):
         self.class_names = class_names
         # Not super important, just need to grab embeddings
         random_video = np.random.rand(1, 1, 30, 224, 224, 3) # TODO: This is a bit hacky, must be a better way... 
@@ -116,13 +141,15 @@ class MMPTClassifier(nn.Module):
             embed_list.append(text_embed)
         
         self.text_embeds = torch.t(torch.cat(embed_list).cuda()) # (embedding x num_classes)
+        self.get_scores = get_scores
     
     def forward(self, video_frames):
-        output = self.mmpt_model(video_frames, self.caps, self.cmasks)
+        # self.mmpt_model.forward_text() gets the text
+        output = self.mmpt_model(video_frames, self.caps, self.cmasks) # Include dummy text
         vid_embed = output["pooled_video"]
-        pred = torch.nn.Softmax(torch.matmul(vid_embed, self.text_embeds))
-        
-        return pred     
+        if self.get_scores:
+            return torch.matmul(vid_embed, self.text_embeds)
+        return torch.nn.functional.softmax(torch.matmul(vid_embed, self.text_embeds), dim=1)     
     
 
 class MMFusion(nn.Module):
@@ -415,7 +442,6 @@ class MMFusionShare(MMFusion):
         output_hidden_states=False,
         **kwargs
     ):
-        # Goes here next
         pooled_video = self.forward_video(
             vfeats,
             vmasks,
