@@ -91,7 +91,7 @@ class MMPTModel(nn.Module):
 class MMPTClassifier(nn.Module):
     """An e2e wrapper of MMPT video classification model.  Requires to set class names before use. Takes only video as input. Use from_pretrained to create a classifier that was trained as a MMPTModel."""
     @classmethod
-    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt"):
+    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt", embed_extractor=False):
         import os
         from ..utils import recursive_config
         from ..tasks import Task
@@ -113,15 +113,18 @@ class MMPTClassifier(nn.Module):
         return MMPTClassifier(
             MMPTModel(config, mmtask.model, video_encoder).eval().to('cuda'), 
             tokenizer, 
-            aligner
+            aligner,
+            embed_extractor=embed_extractor,
         )
     
-    def __init__(self, mmpt_model, tokenizer, aligner):
+    def __init__(self, mmpt_model, tokenizer, aligner, embed_extractor=False):
         super().__init__()
         self.mmpt_model = mmpt_model
         self.tokenizer = tokenizer
         self.aligner = aligner
+        self.embed_extractor = embed_extractor
         self.class_names = None
+        
         
     def set_class_names(self, class_names, get_scores=False):
         self.class_names = class_names
@@ -147,6 +150,8 @@ class MMPTClassifier(nn.Module):
         # self.mmpt_model.forward_text() gets the text
         output = self.mmpt_model(video_frames, self.caps, self.cmasks) # Include dummy text
         vid_embed = output["pooled_video"]
+        if self.embed_extractor:
+            return vid_embed
         if self.get_scores:
             return torch.matmul(vid_embed, self.text_embeds)
         return torch.nn.functional.softmax(torch.matmul(vid_embed, self.text_embeds), dim=1)     

@@ -1,2 +1,5 @@
+# num-seconds: 2 --> acc: 0.202
+
 activity_type: sub-activity
 class_names: all
+num_seconds: 2

@@ -1,3 +1,17 @@
+# num_seconds = 3 gets: accuracy: 0.323
+# num_seconds = 5 gets: accuracy: 0.298
+# num_seconds = 4 gets: accuracy: 0.330
+
+# This was before (when we had a bug in the code)
+
+# Now we have (for num_seconds): 
+# 2 --> 0.362
+# 3 --> 0.340
+# 4 --> 0.379
+# 5 --> 0.379
+
+# These values do not include the few-shot setting!
+
 activity_type: activity
 class_names: all
-  
+num_seconds: 5
