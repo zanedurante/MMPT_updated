@@ -24,7 +24,7 @@ import numpy as np
 from transformers import AutoConfig, AutoTokenizer
 
 from . import transformermodel
-
+import pdb
 
 class MMPTModel(nn.Module):
     """An e2e wrapper of inference model.
@@ -80,6 +80,7 @@ class MMPTModel(nn.Module):
             ],
             dim=1
         ).cuda()
+        #pdb.set_trace()
         output = self.model(caps, cmasks, vfeats, vmasks)
         if return_score:
             output = {"score": torch.bmm(
@@ -92,6 +93,7 @@ class MMPTClassifier(nn.Module):
     """An e2e wrapper of MMPT video classification model.  Requires to set class names before use. Takes only video as input. Use from_pretrained to create a classifier that was trained as a MMPTModel."""
     @classmethod
     def from_pretrained(cls, config, checkpoint="checkpoint_best.pt", embed_extractor=False):
+        #pdb.set_trace()
         import os
         from ..utils import recursive_config
         from ..tasks import Task
@@ -127,9 +129,10 @@ class MMPTClassifier(nn.Module):
         
         
     def set_class_names(self, class_names, get_scores=False):
+        #pdb.set_trace()
         self.class_names = class_names
         # Not super important, just need to grab embeddings
-        random_video = np.random.rand(1, 1, 30, 224, 224, 3) # TODO: This is a bit hacky, must be a better way... 
+        random_video = np.zeros((1, 1, 30, 224, 224, 3)) # TODO: This is a bit hacky, must be a better way... 
         video_frames = torch.from_numpy(random_video).cuda().float() 
         embed_list = []
         for c_name in class_names:
@@ -139,10 +142,13 @@ class MMPTClassifier(nn.Module):
             
             with torch.no_grad():
                 output = self.mmpt_model(video_frames, self.caps, self.cmasks, return_score=False)
-            
+            print(output)
             text_embed = output["pooled_text"] #[:,:,None]
             embed_list.append(text_embed)
         
+        c_name = "This is a video of [MASK]"
+        caps, cmasks = self.aligner._build_text_seq(self.tokenizer(c_name, add_special_tokens=False)["input_ids"])
+        self.caps, self.cmasks = caps[None, :].cuda(), cmasks[None, :].cuda()
         self.text_embeds = torch.t(torch.cat(embed_list).cuda()) # (embedding x num_classes)
         self.get_scores = get_scores
     
@@ -327,11 +333,17 @@ class MMFusion(nn.Module):
         self,
         layered_sequence_output,
         cmasks,
-        vmasks
+        vmasks,
+        VLM=False
     ):
         layer_idx = self.last_iso_layer \
                 if self.last_iso_layer > 0 else self.num_hidden_layers
-        hidden_state = layered_sequence_output[layer_idx]
+        #TODO: Only make this be true for VLM
+        
+        if VLM:
+            hidden_state = layered_sequence_output
+        else:
+            hidden_state = layered_sequence_output[layer_idx]
         # also output pooled_video and pooled_text.
         batch_size = cmasks.size(0)
         # pool the modality.
@@ -405,14 +417,14 @@ class MMFusionMFMMLM(MMFusion):
 
         video_logits, text_logits = outputs[0], outputs[1]
 
-        if self.is_train:  # return earlier for training.
-            return {
-                "video_logits": video_logits,
-                "text_logits": text_logits,
-            }
+        #if self.is_train:  # return earlier for training.
+        #    return {
+        #        "video_logits": video_logits,
+        #        "text_logits": text_logits,
+        #    }
 
         pooled_video, pooled_text = self._pooling_vt_layer(
-            outputs[2], cmasks, vmasks)
+            outputs[2], cmasks, vmasks, VLM=True)
         return {"pooled_video": pooled_video, "pooled_text": pooled_text}
 
 
