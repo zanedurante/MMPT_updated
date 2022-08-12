@@ -1,5 +1,12 @@
 # VideoCLIP and VLM
 
+This repository is an updated version of the original [MMPT repository](https://github.com/facebookresearch/fairseq/tree/main/examples/MMPT) created by FAIR.  It works with more recent versions of PyTorch and transformers.  Currently, the project supports the following PyTorch installs (taken from the [official PyTorch website](https://pytorch.org/get-started/previous-versions/)):
+
+```
+conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cpuonly -c pytorch
+conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cudatoolkit=11.3 -c pytorch -c conda-forge
+```
+
 You just find this toolkit for multimodal video understanding! It contains implementation of two recent multi-modal video understanding papers [VideoCLIP](https://arxiv.org/pdf/2109.14084.pdf) (EMNLP, 2021) and [VLM](https://aclanthology.org/2021.findings-acl.370.pdf) (ACL Findings, 2021), along with high-performance toolkits that are typically lacking in existing codebase. The toolkit is desigend to contain generic performance-tuned components that can be potentially adapted to other frameworks (we initially use fairseq). 
 
 VideoCLIP is a contrastive learning model for zero-shot transfer to retrieval/classification/sequence labeling style tasks.
@@ -163,4 +170,6 @@ If this codebase is useful for your work, please cite the following papers:
 This repo is in its initial stage, welcome bug reports to huxu@fb.com
 
 ### Copyright
+Given that the project is largely built off of the original repository created by FAIR, we use the same copyrights they use (shown below).
+
 The majority of Multimodal Pre-training (MMPT) is licensed under CC-BY-NC, however portions of the project are available under separate license terms: Evaluation Codes/Models: Howto100M and HuggingFace Transformers are licensed under the Apache2.0 license; COIN and NLG-eval are licensed under the MIT license; CrossTask is licensed under the BSD-3; DiDeMo is licensed under the BSD-2 license.
