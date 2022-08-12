@@ -1,4 +1,4 @@
-# VideoCLIP and VLM
+# Disclaimer
 
 This repository is an updated version of the original [MMPT repository](https://github.com/facebookresearch/fairseq/tree/main/examples/MMPT) created by FAIR.  It works with more recent versions of PyTorch and transformers.  Currently, the project supports the following PyTorch installs (taken from the [official PyTorch website](https://pytorch.org/get-started/previous-versions/)):
 
@@ -6,6 +6,8 @@ This repository is an updated version of the original [MMPT repository](https://
 conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cpuonly -c pytorch
 conda install pytorch==1.8.1 torchvision==0.9.1 torchaudio==0.8.1 cudatoolkit=11.3 -c pytorch -c conda-forge
 ```
+
+# VideoCLIP and VLM
 
 You just find this toolkit for multimodal video understanding! It contains implementation of two recent multi-modal video understanding papers [VideoCLIP](https://arxiv.org/pdf/2109.14084.pdf) (EMNLP, 2021) and [VLM](https://aclanthology.org/2021.findings-acl.370.pdf) (ACL Findings, 2021), along with high-performance toolkits that are typically lacking in existing codebase. The toolkit is desigend to contain generic performance-tuned components that can be potentially adapted to other frameworks (we initially use fairseq). 
 
