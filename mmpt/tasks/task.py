@@ -93,18 +93,22 @@ class Task(object):
             output = self.test_data[0]
             self.test_data.print_example(output)
 
-    def build_model(self, checkpoint=None):
+    def build_model(self, checkpoint=None, use_cuda=True):
         if self.model is None:
             model_cls = getattr(models, self.config.model.model_cls)
             self.model = model_cls(self.config)
         if checkpoint is not None:
-            self.load_checkpoint(checkpoint)
+            self.load_checkpoint(checkpoint, use_cuda)
         return self.model
 
-    def load_checkpoint(self, checkpoint):
+    def load_checkpoint(self, checkpoint, use_cuda=True):
         if self.model is None:
             raise ValueError("model is not initialized.")
-        state_dict = torch.load(checkpoint)
+        if use_cuda:
+            state_dict = torch.load(checkpoint)
+        else:
+            state_dict = torch.load(checkpoint, map_location=torch.device('cpu'))
+
         state_dict = self._trim_state_dict(state_dict)
         self.model.load_state_dict(state_dict, strict=False)
         # if it's a fp16 model, turn it back.

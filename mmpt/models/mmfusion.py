@@ -55,11 +55,13 @@ class MMPTModel(nn.Module):
             aligner
         )
 
-    def __init__(self, config, model, video_encoder, **kwargs):
+    def __init__(self, config, model, video_encoder, device='cuda', **kwargs):
         super().__init__()
         self.max_video_len = config.dataset.max_video_len
         self.video_encoder = video_encoder
         self.model = model
+        self.device = device
+        self.model.device = device
 
     def forward(self, video_frames, caps, cmasks, return_score=False):
         bsz = video_frames.size(0)
@@ -68,10 +70,10 @@ class MMPTModel(nn.Module):
         video_frames = video_frames.view(-1, *video_frames.size()[2:])
         vfeats = self.video_encoder(video_frames.permute(0, 4, 1, 2, 3))
         vfeats = vfeats['video_embedding']
-        vfeats = vfeats.view(bsz, seq_len, vfeats.size(-1)).cuda()
+        vfeats = vfeats.view(bsz, seq_len, vfeats.size(-1)).to(self.device)
         
         padding = torch.zeros(
-            bsz, self.max_video_len - seq_len, vfeats.size(-1)).cuda()
+            bsz, self.max_video_len - seq_len, vfeats.size(-1)).to(self.device)
         
         vfeats = torch.cat([vfeats, padding], dim=1)
         vmasks = torch.cat([
@@ -79,7 +81,7 @@ class MMPTModel(nn.Module):
             torch.zeros((bsz, self.max_video_len - seq_len), dtype=torch.bool)
             ],
             dim=1
-        ).cuda()
+        ).to(self.device)
         #pdb.set_trace()
         output = self.model(caps, cmasks, vfeats, vmasks)
         if return_score:
@@ -92,28 +94,33 @@ class MMPTModel(nn.Module):
 class MMPTClassifier(nn.Module):
     """An e2e wrapper of MMPT video classification model.  Requires to set class names before use. Takes only video as input. Use from_pretrained to create a classifier that was trained as a MMPTModel."""
     @classmethod
-    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt", embed_extractor=False):
+    def from_pretrained(cls, config, checkpoint="checkpoint_best.pt", embed_extractor=False,
+                        ckpt_save_dir=None, use_cuda=True):
         #pdb.set_trace()
         import os
         from ..utils import recursive_config
         from ..tasks import Task
         config = recursive_config(config)
         mmtask = Task.config_task(config)
-        checkpoint_path = os.path.join(config.eval.save_path, checkpoint)
-        mmtask.build_model(checkpoint=checkpoint_path)
+        if ckpt_save_dir is None:
+            checkpoint_path = os.path.join(config.eval.save_path, checkpoint)
+        else:
+            checkpoint_path = os.path.join(ckpt_save_dir, checkpoint)
+        mmtask.build_model(checkpoint=checkpoint_path, use_cuda=use_cuda)
         # TODO(huxu): make the video encoder configurable.
         from ..processors.models.s3dg import S3D
-        video_encoder = S3D('pretrained_models/s3d_dict.npy', 512)
+        video_encoder = S3D('video_clip/MMPT_updated/pretrained_models/s3d_dict.npy', 512)
         video_encoder.load_state_dict(
-            torch.load('pretrained_models/s3d_howto100m.pth'))
+            torch.load('video_clip/MMPT_updated/pretrained_models/s3d_howto100m.pth'))
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
             config.dataset.bert_name, use_fast=config.dataset.use_fast
         )
         from ..processors import Aligner
         aligner = Aligner(config.dataset)
+        device = 'cuda' if use_cuda else 'cpu'
         return MMPTClassifier(
-            MMPTModel(config, mmtask.model, video_encoder).eval().to('cuda'), 
+            MMPTModel(config, mmtask.model, video_encoder, device=device).eval().to(device),
             tokenizer, 
             aligner,
             embed_extractor=embed_extractor,
@@ -604,9 +611,9 @@ class MMFusionSeparate(MMFusionShare):
         input_ids = caps[:, :2]
 
         attention_mask = torch.cat([
-            cmasks[:, :1].cuda(),
-            vmasks.cuda(),
-            cmasks[:, 1:2].cuda()
+            cmasks[:, :1].to(self.device),
+            vmasks.to(self.device),
+            cmasks[:, 1:2].to(self.device)
         ], dim=1)
 
         token_type_ids = torch.zeros(
