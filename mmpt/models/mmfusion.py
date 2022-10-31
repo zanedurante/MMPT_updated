@@ -109,9 +109,11 @@ class MMPTClassifier(nn.Module):
         mmtask.build_model(checkpoint=checkpoint_path, use_cuda=use_cuda)
         # TODO(huxu): make the video encoder configurable.
         from ..processors.models.s3dg import S3D
-        video_encoder = S3D('video_clip/MMPT_updated/pretrained_models/s3d_dict.npy', 512)
+        # /home/zaned/code/vlm_benchmark/video_clip/MMPT_updated/runs/retri/videoclip/
+        path_stem = checkpoint_path[:checkpoint_path.find("MMPT_updated/")]
+        video_encoder = S3D(path_stem + 'MMPT_updated/pretrained_models/s3d_dict.npy', 512)
         video_encoder.load_state_dict(
-            torch.load('video_clip/MMPT_updated/pretrained_models/s3d_howto100m.pth'))
+            torch.load(path_stem + 'MMPT_updated/pretrained_models/s3d_howto100m.pth'))
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(
             config.dataset.bert_name, use_fast=config.dataset.use_fast
@@ -473,7 +475,6 @@ class MMFusionShare(MMFusion):
             cmasks,
             output_hidden_states
         )
-
         pooled_text = self.forward_text(
             caps,
             cmasks,
@@ -676,15 +677,15 @@ class MMFusionSeparate(MMFusionShare):
             (cmasks.size(0), cmasks.size(1) - 1),
             dtype=torch.long,
             device=cmasks.device)
-
+        #pdb.set_trace()
         outputs = self.text_encoder(
             input_ids=input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
             output_hidden_states=True
         )
+        #pdb.set_trace()
         text_outputs = outputs[0]
-
         if output_hidden_states:
             return text_outputs
 
