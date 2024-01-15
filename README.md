@@ -1,4 +1,4 @@
-# Disclaimer
+# Disclaimer -- DO NOT READ FOR DOUBLE BLIND REVIEW
 
 This repository is an updated version of the original [MMPT repository](https://github.com/facebookresearch/fairseq/tree/main/examples/MMPT) created by FAIR.  It works with more recent versions of PyTorch and transformers.  Currently, the project supports the following PyTorch installs (taken from the [official PyTorch website](https://pytorch.org/get-started/previous-versions/)):
 
